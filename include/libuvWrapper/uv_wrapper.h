@@ -90,7 +90,6 @@ namespace uv
 
 		int SendPack(const char* buf, int length);
 		int SendPack(int clientid, const char* buf, int length);
-		virtual void messageReceived(int cliendid, const char* buf, int bufsize);
 		void setnewconnectcb(newconnect cb);
 		void setrecvcb(int clientid, server_recvcb cb);//设置接收回调函数，每个客户端各有一个
 		bool DeleteClient(int clientid);//删除链表中的客户端
@@ -137,7 +136,7 @@ namespace uv
 		//基本函数
 		bool connect(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		virtual bool connect6(const char* ip, int port);//启动connect线程，循环等待直到connect完成
-		int Send(const char* data, std::size_t len);
+		int SendPack(const char* data, std::size_t len);
 		virtual void messageReceived(int cliendid, const char* buf, int bufsize) = 0;
 
 		void close();

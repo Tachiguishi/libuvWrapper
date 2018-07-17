@@ -382,13 +382,6 @@ namespace uv
 		return 0;
 	}
 
-	void TCPServer::messageReceived(int cliendid, const char * buf, int bufsize)
-	{
-		std::cout << "received " << bufsize
-			<<" bytes from client "<< cliendid << std::endl;
-		SendPack(cliendid, buf, bufsize);
-	}
-
 	//服务器-新链接回调函数
 	void TCPServer::setnewconnectcb(newconnect cb)
 	{
@@ -733,7 +726,7 @@ namespace uv
 		fprintf(stdout, "end after connect\n");
 	}
 
-	int TCPClient::Send(const char* data, std::size_t len) {
+	int TCPClient::SendPack(const char* data, std::size_t len) {
 		if (!protocol_) return 0;
 
 		std::size_t size = protocol_->FramePack(_packBuf, BUFFERSIZE, data, len);

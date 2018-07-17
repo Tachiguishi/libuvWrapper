@@ -44,7 +44,7 @@ int main()
 		{
 			std::string text;
 			std::cin >> text;
-			client.Send(text.c_str(), text.size());
+			client.SendPack(text.c_str(), text.size());
 		}
 	}
 	return 0;
