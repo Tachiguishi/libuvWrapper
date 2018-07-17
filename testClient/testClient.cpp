@@ -12,7 +12,7 @@ class MyClient : public uv::TCPClient {
 public:
 	MyClient(uv::Protocol* protocol);
 protected:
-	void messageReceived(const char* buf, int bufsize);
+	void messageReceived(int cliendid, const char* buf, int bufsize) override;
 };
 
 MyClient::MyClient(uv::Protocol* protocol):
@@ -20,8 +20,8 @@ MyClient::MyClient(uv::Protocol* protocol):
 {
 
 }
-void MyClient::messageReceived(const char* buf, int bufsize) {
-	std::cout << buf;
+void MyClient::messageReceived(int cliendid, const char* buf, int bufsize) {
+	std::cout << buf << std::endl;;
 }
 
 MyProtocol myProtocol(1001);

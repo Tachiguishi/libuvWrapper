@@ -88,8 +88,8 @@ namespace uv
 			return errmsg_.c_str();
 		};
 
-		int SendPack(char* buf, int length);
-		int SendPack(int clientid, char* buf, int length);
+		int SendPack(const char* buf, int length);
+		int SendPack(int clientid, const char* buf, int length);
 		virtual void messageReceived(int cliendid, const char* buf, int bufsize);
 		void setnewconnectcb(newconnect cb);
 		void setrecvcb(int clientid, server_recvcb cb);//设置接收回调函数，每个客户端各有一个
@@ -138,7 +138,7 @@ namespace uv
 		bool connect(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		virtual bool connect6(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		int Send(const char* data, std::size_t len);
-		void messageReceived(int cliendid, const char* buf, int bufsize);
+		virtual void messageReceived(int cliendid, const char* buf, int bufsize) = 0;
 
 		void close();
 
@@ -163,7 +163,8 @@ namespace uv
 		bool init();
 		bool run(int status = UV_RUN_DEFAULT);
 		int  send(const char* data, std::size_t len);
-		virtual void messageReceived(const char* buf, int bufsize) = 0;
+	public:
+		packdata packdata_;
 	private:
 		enum {
 			CONNECT_TIMEOUT,

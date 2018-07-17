@@ -364,7 +364,7 @@ namespace uv
 
 	}
 
-	int TCPServer::SendPack(char * buf, int length)
+	int TCPServer::SendPack(const char * buf, int length)
 	{
 		if (!_protocol) return 0;
 
@@ -373,7 +373,7 @@ namespace uv
 		return 0;
 	}
 
-	int TCPServer::SendPack(int clientid, char * buf, int length)
+	int TCPServer::SendPack(int clientid, const char * buf, int length)
 	{
 		if (!_protocol) return 0;
 
@@ -386,6 +386,7 @@ namespace uv
 	{
 		std::cout << "received " << bufsize
 			<<" bytes from client "<< cliendid << std::endl;
+		SendPack(cliendid, buf, bufsize);
 	}
 
 	//服务器-新链接回调函数
@@ -490,7 +491,8 @@ namespace uv
 		:_packBuf(nullptr)
 		, connectstatus_(CONNECT_DIS)
 		, isinit_(false),
-		protocol_(protocol)
+		protocol_(protocol),
+		packdata_(0, protocol)
 	{
 		readbuffer_ = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
 		writebuffer_ = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
@@ -738,10 +740,6 @@ namespace uv
 		return send(_packBuf, size);;
 	}
 
-	void TCPClient::messageReceived(int cliendid, const char * buf, int bufsize)
-	{
-	}
-
 	//客户端的发送函数
 	int TCPClient::send(const char* data, std::size_t len)
 	{
@@ -803,7 +801,7 @@ namespace uv
 			return;
 		}
 		if (nread > 0) {
-			client->messageReceived(buf->base, nread);
+			client->packdata_.rawPackParse(buf, nread, client);
 		}
 	}
 
