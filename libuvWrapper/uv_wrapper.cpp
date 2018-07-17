@@ -39,7 +39,7 @@ void PrintAddress(const struct sockaddr *address) {
 
 namespace uv
 {
-	std::string GetUVError(int retcode)
+	std::string getUVError(int retcode)
 	{
 		std::string err;
 		err = uv_err_name(retcode);
@@ -48,7 +48,7 @@ namespace uv
 		return std::move(err);
 	}
 
-	void clientdata::rawPackParse(const uv_buf_t * buf, int bufsize) {
+	void packdata::rawPackParse(const uv_buf_t * buf, int bufsize, socketBase* sb) {
 		if (buf == nullptr || bufsize <= 0) {
 			return;
 		}
@@ -70,9 +70,9 @@ namespace uv
 			length = protocol->ParsePack(payload, size);
 			if (length > 0)
 			{
-				if (recvcb_)
+				if (sb)
 				{
-					recvcb_(client_id, payload, length);
+					sb->messageReceived(client_id, payload, length);
 				}
 				payload += length;
 				size -= length;
@@ -124,13 +124,13 @@ namespace uv
 		}
 		int iret = uv_mutex_init(&mutex_handle_);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
 		iret = uv_tcp_init(loop_, &server_);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -138,7 +138,7 @@ namespace uv
 		server_.data = this;
 		iret = uv_tcp_keepalive(&server_, 1, 60);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			return false;
 		}
 		return true;
@@ -166,7 +166,7 @@ namespace uv
 		printf("server runing.");
 		int iret = uv_run(loop_, (uv_run_mode)status);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -177,7 +177,7 @@ namespace uv
 	{
 		int iret = uv_tcp_nodelay(&server_, enable ? 1 : 0);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -188,7 +188,7 @@ namespace uv
 	{
 		int iret = uv_tcp_keepalive(&server_, enable, delay);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -201,13 +201,13 @@ namespace uv
 		struct sockaddr_in bind_addr;
 		int iret = uv_ip4_addr(ip, port, &bind_addr);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
 		iret = uv_tcp_bind(&server_, (const struct sockaddr*)&bind_addr, 0);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -220,13 +220,13 @@ namespace uv
 		struct sockaddr_in6 bind_addr;
 		int iret = uv_ip6_addr(ip, port, &bind_addr);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
 		iret = uv_tcp_bind(&server_, (const struct sockaddr*)&bind_addr, 0);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -238,7 +238,7 @@ namespace uv
 	{
 		int iret = uv_listen((uv_stream_t*)&server_, backlog, acceptConnection);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -303,7 +303,7 @@ namespace uv
 		uv_write_t *write_req = (uv_write_t*)malloc(sizeof(uv_write_t));
 		int iret = uv_write(write_req, (uv_stream_t*)itfind->second->client_handle, &buf, 1, AfterSend);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -328,18 +328,18 @@ namespace uv
 		}
 		TCPServer *tcpsock = (TCPServer *)server->data;
 		int clientid = tcpsock->GetAvailaClientID();
-		clientdata* cdata = new clientdata(clientid, tcpsock->_protocol);//uv_close回调函数中释放
+		packdata* cdata = new packdata(clientid, tcpsock->_protocol);//uv_close回调函数中释放
 		cdata->tcp_server = tcpsock;//保存服务器的信息
 		int iret = uv_tcp_init(tcpsock->loop_, cdata->client_handle);//析构函数释放
 		if (iret) {
 			delete cdata;
-			tcpsock->errmsg_ = GetUVError(iret);
+			tcpsock->errmsg_ = getUVError(iret);
 			printf(tcpsock->errmsg_.c_str());
 			return;
 		}
 		iret = uv_accept((uv_stream_t*)&tcpsock->server_, (uv_stream_t*)cdata->client_handle);
 		if (iret) {
-			tcpsock->errmsg_ = GetUVError(iret);
+			tcpsock->errmsg_ = getUVError(iret);
 			uv_close((uv_handle_t*)cdata->client_handle, NULL);
 			delete cdata;
 			printf(tcpsock->errmsg_.c_str());
@@ -361,10 +361,7 @@ namespace uv
 	//服务器-接收数据回调函数
 	void TCPServer::setrecvcb(int clientid, server_recvcb cb)
 	{
-		auto itfind = clients_list_.find(clientid);
-		if (itfind != clients_list_.end()) {
-			itfind->second->recvcb_ = cb;
-		}
+
 	}
 
 	int TCPServer::SendPack(char * buf, int length)
@@ -385,6 +382,12 @@ namespace uv
 		return 0;
 	}
 
+	void TCPServer::messageReceived(int cliendid, const char * buf, int bufsize)
+	{
+		std::cout << "received " << bufsize
+			<<" bytes from client "<< cliendid << std::endl;
+	}
+
 	//服务器-新链接回调函数
 	void TCPServer::setnewconnectcb(newconnect cb)
 	{
@@ -397,7 +400,7 @@ namespace uv
 		if (!handle->data) {
 			return;
 		}
-		clientdata *client = (clientdata*)handle->data;
+		packdata *client = (packdata*)handle->data;
 		*buf = client->readbuffer;
 	}
 
@@ -406,9 +409,9 @@ namespace uv
 		if (!handle->data) {
 			return;
 		}
-		clientdata *client = (clientdata*)handle->data;//服务器的recv带的是clientdata
+		packdata *client = (packdata*)handle->data;//服务器的recv带的是packdata
+		TCPServer *server = (TCPServer *)client->tcp_server;
 		if (nread < 0) {/* Error or EOF */
-			TCPServer *server = (TCPServer *)client->tcp_server;
 			if (nread == UV_EOF) {
 				fprintf(stdout, "客户端(%d)连接断开，关闭此客户端\n", client->client_id);
 				std::cout << "客户端(" << client->client_id << ")主动断开" << std::endl;
@@ -418,8 +421,8 @@ namespace uv
 				std::cout << "客户端(" << client->client_id << ")异常断开" << std::endl;
 			}
 			else {
-				fprintf(stdout, "%s\n", GetUVError(nread).c_str());
-				std::cout << "客户端(" << client->client_id << ")异常断开：" << GetUVError(nread) << std::endl;
+				fprintf(stdout, "%s\n", getUVError(nread).c_str());
+				std::cout << "客户端(" << client->client_id << ")异常断开：" << getUVError(nread) << std::endl;
 			}
 			server->DeleteClient(client->client_id);//连接断开，关闭客户端
 			return;
@@ -428,7 +431,7 @@ namespace uv
 
 		}
 		else if (client->protocol) {
-			client->rawPackParse(buf, nread);
+			client->rawPackParse(buf, nread, server);
 		}
 	}
 
@@ -436,7 +439,7 @@ namespace uv
 	void TCPServer::AfterSend(uv_write_t *req, int status)
 	{
 		if (status < 0) {
-			fprintf(stderr, "send error %s\n", GetUVError(status).c_str());
+			fprintf(stderr, "send error %s\n", getUVError(status).c_str());
 		}
 		free(req);
 	}
@@ -448,7 +451,7 @@ namespace uv
 
 	void TCPServer::AfterClientClose(uv_handle_t *handle)
 	{
-		clientdata *cdata = (clientdata*)handle->data;
+		packdata *cdata = (packdata*)handle->data;
 		std::cout << "client " << cdata->client_id << " had closed." << std::endl;
 		delete cdata;
 	}
@@ -527,13 +530,13 @@ namespace uv
 		}
 		int iret = uv_tcp_init(loop_, &client_);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
 		iret = uv_mutex_init(&write_mutex_handle_);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -542,7 +545,7 @@ namespace uv
 		client_.data = this;
 		iret = uv_tcp_keepalive(&client_, 1, 60);
 		if (iret) {
-		    errmsg_ = GetUVError(iret);
+		    errmsg_ = getUVError(iret);
 			std::cout << errmsg_ << std::endl;
 		    return false;
 		}
@@ -566,7 +569,7 @@ namespace uv
 		std::cout << "客户端(" << this << ")run";
 		int iret = uv_run(loop_, (uv_run_mode)status);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -579,7 +582,7 @@ namespace uv
 		//http://blog.csdn.net/u011133100/article/details/21485983
 		int iret = uv_tcp_nodelay(&client_, enable ? 1 : 0);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -590,7 +593,7 @@ namespace uv
 	{
 		int iret = uv_tcp_keepalive(&client_, enable, delay);
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -607,7 +610,7 @@ namespace uv
 		std::cout << "客户端(" << this << ")start connect to server(" << ip << ":" << port << ")";
 		int iret = uv_thread_create(&connect_threadhanlde_, ConnectThread, this);//触发AfterConnect才算真正连接成功，所以用线程
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -630,7 +633,7 @@ namespace uv
 		std::cout << "客户端(" << this << ")start connect to server(" << ip << ":" << port << ")";
 		int iret = uv_thread_create(&connect_threadhanlde_, ConnectThread6, this);//触发AfterConnect才算真正连接成功，所以用线程
 		if (iret) {
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -652,7 +655,7 @@ namespace uv
 		struct sockaddr_in bind_addr;
 		int iret = uv_ip4_addr(pclient->connectip_.c_str(), pclient->connectport_, &bind_addr);
 		if (iret) {
-			pclient->errmsg_ = GetUVError(iret);
+			pclient->errmsg_ = getUVError(iret);
 			printf(pclient->errmsg_.c_str());
 			return;
 		}
@@ -660,7 +663,7 @@ namespace uv
 		{
 			iret = uv_tcp_connect(&pclient->connect_req_, &pclient->client_, (const sockaddr*)&bind_addr, AfterConnect);
 			if (iret) {
-				pclient->errmsg_ = GetUVError(iret);
+				pclient->errmsg_ = getUVError(iret);
 				printf("%s\n", pclient->errmsg_.c_str());
 				Sleep(500);
 
@@ -671,7 +674,7 @@ namespace uv
 
 				iret = uv_tcp_init(pclient->loop_, &pclient->client_);
 				if (iret) {
-					pclient->errmsg_ = GetUVError(iret);
+					pclient->errmsg_ = getUVError(iret);
 					printf(pclient->errmsg_.c_str());
 					return;
 				}
@@ -691,13 +694,13 @@ namespace uv
 		struct sockaddr_in6 bind_addr;
 		int iret = uv_ip6_addr(pclient->connectip_.c_str(), pclient->connectport_, &bind_addr);
 		if (iret) {
-			pclient->errmsg_ = GetUVError(iret);
+			pclient->errmsg_ = getUVError(iret);
 			printf(pclient->errmsg_.c_str());
 			return;
 		}
 		iret = uv_tcp_connect(&pclient->connect_req_, &pclient->client_, (const sockaddr*)&bind_addr, AfterConnect);
 		if (iret) {
-			pclient->errmsg_ = GetUVError(iret);
+			pclient->errmsg_ = getUVError(iret);
 			printf(pclient->errmsg_.c_str());
 			return;
 		}
@@ -712,13 +715,13 @@ namespace uv
 		TCPClient *pclient = (TCPClient*)handle->handle->data;
 		if (status) {
 			pclient->connectstatus_ = CONNECT_ERROR;
-			fprintf(stdout, "connect error:%s\n", GetUVError(status).c_str());
+			fprintf(stdout, "connect error:%s\n", getUVError(status).c_str());
 			return;
 		}
 
 		int iret = uv_read_start(handle->handle, onAllocBuffer, AfterClientRecv);//客户端开始接收服务器的数据
 		if (iret) {
-			fprintf(stdout, "uv_read_start error:%s\n", GetUVError(iret).c_str());
+			fprintf(stdout, "uv_read_start error:%s\n", getUVError(iret).c_str());
 			pclient->connectstatus_ = CONNECT_ERROR;
 		}
 		else {
@@ -733,6 +736,10 @@ namespace uv
 
 		std::size_t size = protocol_->FramePack(_packBuf, BUFFERSIZE, data, len);
 		return send(_packBuf, size);;
+	}
+
+	void TCPClient::messageReceived(int cliendid, const char * buf, int bufsize)
+	{
 	}
 
 	//客户端的发送函数
@@ -755,7 +762,7 @@ namespace uv
 		int iret = uv_write(write_req, (uv_stream_t*)&client_, &buf, 1, AfterSend);
 		if (iret) {
 			uv_mutex_unlock(&write_mutex_handle_);
-			errmsg_ = GetUVError(iret);
+			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
 			return false;
 		}
@@ -789,8 +796,8 @@ namespace uv
 				printf("服务器异常断开");
 			}
 			else {
-				fprintf(stdout, "服务器(%p)异常断开:%s\n", handle, GetUVError(nread).c_str());
-				std::cout << "服务器异常断开" << GetUVError(nread);
+				fprintf(stdout, "服务器(%p)异常断开:%s\n", handle, getUVError(nread).c_str());
+				std::cout << "服务器异常断开" << getUVError(nread);
 			}
 			uv_close((uv_handle_t*)handle, AfterClose);
 			return;
@@ -807,8 +814,8 @@ namespace uv
 		uv_mutex_unlock(&client->write_mutex_handle_);
 		free(req);
 		if (status < 0) {
-			std::cout << "发送数据有误:" << GetUVError(status);
-			fprintf(stderr, "Write error %s\n", GetUVError(status).c_str());
+			std::cout << "发送数据有误:" << getUVError(status);
+			fprintf(stderr, "Write error %s\n", getUVError(status).c_str());
 		}
 	}
 	//服务器与客户端一致

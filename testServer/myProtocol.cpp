@@ -24,7 +24,7 @@ void MyProtocol::SetChannelID(unsigned short id)
 
 int MyProtocol::FramePack(char* pack, int packLen, const char* rawData, int dataLength)
 {
-	if (packLen < sizeof(TelHead) + dataLength) {
+	if ((size_t)packLen < sizeof(TelHead) + dataLength) {
 		return 0;
 	}
 	TelHead* pHead = (TelHead*)pack;
@@ -66,7 +66,7 @@ int MyProtocol::ParsePack(char* &packCache, int &size)
 	}
 
 	// not a integral message, cache payload
-	if (size < (sizeof(TelHead) + payLoadLength))
+	if ((size_t)size < (sizeof(TelHead) + payLoadLength))
 	{
 		return 0;
 	}

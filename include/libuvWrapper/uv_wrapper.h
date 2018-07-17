@@ -20,7 +20,7 @@ namespace uv
 	typedef void(*newconnect)(int clientid);
 	typedef void(*server_recvcb)(int cliendid, const char* buf, int bufsize);
 
-	std::string GetUVError(int retcode);
+	std::string getUVError(int retcode);
 
 	class Protocol
 	{
@@ -31,18 +31,23 @@ namespace uv
 		virtual int ParsePack(char* &packCache, int &size) = 0;
 	};
 
+	class socketBase {
+	public:
+		virtual void messageReceived(int cliendid, const char* buf, int bufsize) = 0;
+	};
+
 	class TCPServer;
-	class clientdata
+	class packdata
 	{
 	public:
-		clientdata(int clientid, Protocol* pro) :client_id(clientid), recvcb_(nullptr), protocol(pro){
+		packdata(int clientid, Protocol* pro) :client_id(clientid), protocol(pro){
 			client_handle = (uv_tcp_t*)malloc(sizeof(*client_handle));
 			client_handle->data = this;
 			readbuffer = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
 			writebuffer = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
 			readStream.clear();
 		}
-		virtual ~clientdata() {
+		virtual ~packdata() {
 			free(readbuffer.base);
 			readbuffer.base = nullptr;
 			readbuffer.len = 0;
@@ -54,19 +59,18 @@ namespace uv
 			free(client_handle);
 			client_handle = nullptr;
 		}
-		void rawPackParse(const uv_buf_t * buf, int bufsize);
+		void rawPackParse(const uv_buf_t * buf, int bufsize, socketBase* sb);
 		int client_id;//客户端id,惟一
 		uv_tcp_t* client_handle;//客户端句柄
 		TCPServer* tcp_server;//服务器句柄(保存是因为某些回调函数需要到)
 		uv_buf_t readbuffer;//接受数据的buf
 		uv_buf_t writebuffer;//写数据的buf
 		uv_write_t write_req;
-		server_recvcb recvcb_;//接收数据回调给用户的函数
 		Protocol* protocol;
 		std::string readStream;	// 有效数据缓存
 	};
 
-	class TCPServer
+	class TCPServer : public socketBase
 	{
 	public:
 		TCPServer(Protocol* protocol, uv_loop_t* loop = uv_default_loop());
@@ -86,6 +90,7 @@ namespace uv
 
 		int SendPack(char* buf, int length);
 		int SendPack(int clientid, char* buf, int length);
+		virtual void messageReceived(int cliendid, const char* buf, int bufsize);
 		void setnewconnectcb(newconnect cb);
 		void setrecvcb(int clientid, server_recvcb cb);//设置接收回调函数，每个客户端各有一个
 		bool DeleteClient(int clientid);//删除链表中的客户端
@@ -110,7 +115,7 @@ namespace uv
 		bool listen(int backlog = 1024);
 
 		uv_tcp_t server_;//服务器链接
-		std::map<int, clientdata*> clients_list_;//子客户端链接
+		std::map<int, packdata*> clients_list_;//子客户端链接
 		uv_mutex_t mutex_handle_;//保护clients_list_
 		uv_loop_t *loop_;
 		std::string errmsg_;
@@ -122,7 +127,7 @@ namespace uv
 
 
 
-	class TCPClient
+	class TCPClient : public socketBase
 	{
 		//直接调用connect/connect6会进行连接
 	public:
@@ -133,6 +138,7 @@ namespace uv
 		bool connect(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		virtual bool connect6(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		int Send(const char* data, std::size_t len);
+		void messageReceived(int cliendid, const char* buf, int bufsize);
 
 		void close();
 
