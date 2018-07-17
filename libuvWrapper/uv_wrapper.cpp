@@ -484,7 +484,7 @@ namespace uv
 
 	/*****************************************TCP Client*************************************************************/
 	TCPClient::TCPClient(Protocol* protocol, uv_loop_t* loop)
-		:recvcb_(nullptr), userdata_(nullptr), _packBuf(nullptr)
+		:_packBuf(nullptr)
 		, connectstatus_(CONNECT_DIS)
 		, isinit_(false),
 		protocol_(protocol)
@@ -762,13 +762,6 @@ namespace uv
 		return true;
 	}
 
-	//客户端-接收数据回调函数
-	void TCPClient::setrecvcb(client_recvcb cb, void* userdata)
-	{
-		recvcb_ = cb;
-		userdata_ = userdata;
-	}
-
 	//客户端分析空间函数
 	void TCPClient::onAllocBuffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 	{
@@ -802,8 +795,8 @@ namespace uv
 			uv_close((uv_handle_t*)handle, AfterClose);
 			return;
 		}
-		if (nread > 0 && client->recvcb_) {
-			client->recvcb_(buf->base, nread, client->userdata_);
+		if (nread > 0) {
+			client->messageReceived(buf->base, nread);
 		}
 	}
 

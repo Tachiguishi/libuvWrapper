@@ -19,7 +19,6 @@ namespace uv
 {
 	typedef void(*newconnect)(int clientid);
 	typedef void(*server_recvcb)(int cliendid, const char* buf, int bufsize);
-	typedef void(*client_recvcb)(const char* buf, int bufsize, void* userdata);
 
 	std::string GetUVError(int retcode);
 
@@ -134,8 +133,7 @@ namespace uv
 		bool connect(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		virtual bool connect6(const char* ip, int port);//启动connect线程，循环等待直到connect完成
 		int Send(const char* data, std::size_t len);
-		
-		void setrecvcb(client_recvcb cb, void* userdata);////设置接收回调函数，只有一个
+
 		void close();
 
 		//是否启用Nagle算法
@@ -159,6 +157,7 @@ namespace uv
 		bool init();
 		bool run(int status = UV_RUN_DEFAULT);
 		int  send(const char* data, std::size_t len);
+		virtual void messageReceived(const char* buf, int bufsize) = 0;
 	private:
 		enum {
 			CONNECT_TIMEOUT,
@@ -177,8 +176,6 @@ namespace uv
 		uv_mutex_t write_mutex_handle_;//保护write,保存前一write完成才进行下一write
 
 		int connectstatus_;//连接状态
-		client_recvcb recvcb_;//回调函数
-		void* userdata_;//回调函数的用户数据
 		std::string connectip_;//连接的服务器IP
 		int connectport_;//连接的服务器端口号
 		Protocol* protocol_;
