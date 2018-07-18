@@ -317,9 +317,7 @@ namespace uv
 	{
 		auto itfind = clients_list_.find(clientid);
 		if (itfind == clients_list_.end()) {
-			errmsg_ = "can't find cliendid ";
-			errmsg_ += std::to_string((long long)clientid);
-			printf(errmsg_.c_str());
+			fprintf(stderr, "can't find cliendid %d", clientid);
 			return -1;
 		}
 		//自己控制data的生命周期直到write结束
@@ -330,10 +328,11 @@ namespace uv
 		memcpy(itfind->second->writebuffer.base, data, len);
 		uv_buf_t buf = uv_buf_init((char*)itfind->second->writebuffer.base, len);
 		uv_write_t *write_req = (uv_write_t*)malloc(sizeof(uv_write_t));
+		write_req->data = itfind->second;
+		itfind->second->write_req_hash_.insert(write_req);
 		int iret = uv_write(write_req, (uv_stream_t*)itfind->second->client_tcp_handle, &buf, 1, AfterSend);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		return true;
@@ -455,6 +454,11 @@ namespace uv
 		if (status < 0) {
 			fprintf(stderr, "send error %s\n", getUVError(status).c_str());
 		}
+		ClientPack* client = (ClientPack*)req->data;
+		auto search = client->write_req_hash_.find(req);
+		if (search != client->write_req_hash_.end()) {
+			client->write_req_hash_.erase(search);
+		}
 		free(req);
 	}
 
@@ -481,9 +485,7 @@ namespace uv
 		uv_mutex_lock(&mutex_handle_);
 		auto itfind = clients_list_.find(clientid);
 		if (itfind == clients_list_.end()) {
-			errmsg_ = "can't find client ";
-			errmsg_ += std::to_string((long long)clientid);
-			printf(errmsg_.c_str());
+			fprintf(stderr, "can't find client %d", clientid);
 			uv_mutex_unlock(&mutex_handle_);
 			return false;
 		}

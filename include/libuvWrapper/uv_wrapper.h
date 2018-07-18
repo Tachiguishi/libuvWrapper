@@ -6,6 +6,7 @@
 #include "libuvWrapper/uv.h"
 #include <string>
 #include <list>
+#include <unordered_set>
 #include <map>
 #define BUFFERSIZE (1024*1024)
 
@@ -55,6 +56,10 @@ namespace uv
 			writebuffer.base = nullptr;
 			writebuffer.len = 0;
 
+			for (auto item : write_req_hash_) {
+				free(item);
+			}
+
 			free(client_tcp_handle);
 			client_tcp_handle = nullptr;
 		}
@@ -65,7 +70,7 @@ namespace uv
 		void* tcp_server;//服务器句柄(保存是因为某些回调函数需要到)
 		uv_buf_t readbuffer;//接受数据的buf
 		uv_buf_t writebuffer;//写数据的buf
-		uv_write_t write_req;
+		std::unordered_set<uv_write_t*> write_req_hash_;
 		Protocol* protocol;
 		std::string readStream;	// 有效数据缓存
 		char ipAddress_[INET6_ADDRSTRLEN];
