@@ -48,7 +48,7 @@ namespace uv
 		return std::move(err);
 	}
 
-	void packdata::rawPackParse(const uv_buf_t * buf, int bufsize, socketBase* sb) {
+	void ClientPack::rawPackParse(const uv_buf_t * buf, int bufsize, socketBase* sb) {
 		if (buf == nullptr || bufsize <= 0) {
 			return;
 		}
@@ -91,9 +91,43 @@ namespace uv
 		}
 	}
 
+	void ClientPack::recordAddress()
+	{
+		sockaddr address;
+		int len = sizeof(address);
+		uv_tcp_getpeername(client_tcp_handle, &address, &len);
+
+		void *numericAddress; // Pointer to binary address
+							  // Buffer to contain result (IPv6 sufficient to hold IPv4)
+		// Set pointer to address based on address family
+		switch (address.sa_family) {
+		case AF_INET:
+			numericAddress = &((struct sockaddr_in *) &address)->sin_addr;
+			port_ = ntohs(((struct sockaddr_in *) &address)->sin_port);
+			break;
+		case AF_INET6:
+			numericAddress = &((struct sockaddr_in6 *) &address)->sin6_addr;
+			port_ = ntohs(((struct sockaddr_in6 *) &address)->sin6_port);
+			break;
+		default:
+			printf("[unknown type]\n");    // Unhandled type
+			return;
+		}
+		// Convert binary to printable address
+		if (inet_ntop(address.sa_family, numericAddress, ipAddress_,
+			sizeof(ipAddress_)) == NULL)
+			printf("[invalid address]\n"); // Unable to convert
+		else {
+			printf("%s", ipAddress_);
+			if (port_ != 0)                // Zero not valid in any socket addr
+				printf("-%u", port_);
+			printf("\n");
+		}
+	}
+
 	/*****************************************TCP Server*************************************************************/
 	TCPServer::TCPServer(Protocol* protocol, uv_loop_t* loop)
-		:mNewConnCBFun(nullptr), isinit_(false),
+		:isinit_(false),
 		_protocol(protocol)
 	{
 		loop_ = loop;
@@ -148,7 +182,7 @@ namespace uv
 	{
 		for (auto it = clients_list_.begin(); it != clients_list_.end(); ++it) {
 			auto data = it->second;
-			uv_close((uv_handle_t*)data->client_handle, AfterClientClose);
+			uv_close((uv_handle_t*)data->client_tcp_handle, AfterClientClose);
 		}
 		clients_list_.clear();
 
@@ -166,8 +200,7 @@ namespace uv
 		printf("server runing.");
 		int iret = uv_run(loop_, (uv_run_mode)status);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		return true;
@@ -201,17 +234,15 @@ namespace uv
 		struct sockaddr_in bind_addr;
 		int iret = uv_ip4_addr(ip, port, &bind_addr);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		iret = uv_tcp_bind(&server_, (const struct sockaddr*)&bind_addr, 0);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
-		std::cout << "server bind to" << ip << ":" << port << std::endl;
+		std::cout << "server bind to " << ip << ":" << port << std::endl;
 		return true;
 	}
 
@@ -220,26 +251,24 @@ namespace uv
 		struct sockaddr_in6 bind_addr;
 		int iret = uv_ip6_addr(ip, port, &bind_addr);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		iret = uv_tcp_bind(&server_, (const struct sockaddr*)&bind_addr, 0);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
-		std::cout << "server bind ip=" << ip << ", port=" << port;
+		std::cout << "server bind to " << ip << ":" << port << std::endl;
 		return true;
 	}
 
 	bool TCPServer::listen(int backlog)
 	{
+		std::cout << "try listen" << std::endl;
 		int iret = uv_listen((uv_stream_t*)&server_, backlog, acceptConnection);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		printf("server listening\n");
@@ -301,7 +330,7 @@ namespace uv
 		memcpy(itfind->second->writebuffer.base, data, len);
 		uv_buf_t buf = uv_buf_init((char*)itfind->second->writebuffer.base, len);
 		uv_write_t *write_req = (uv_write_t*)malloc(sizeof(uv_write_t));
-		int iret = uv_write(write_req, (uv_stream_t*)itfind->second->client_handle, &buf, 1, AfterSend);
+		int iret = uv_write(write_req, (uv_stream_t*)itfind->second->client_tcp_handle, &buf, 1, AfterSend);
 		if (iret) {
 			errmsg_ = getUVError(iret);
 			printf(errmsg_.c_str());
@@ -320,48 +349,45 @@ namespace uv
 		return true;
 	}
 
+	void TCPServer::OnNewConnection(int clientid)
+	{
+	}
+
 	//服务器-新客户端函数
 	void TCPServer::acceptConnection(uv_stream_t *server, int status)
 	{
+		if (status < 0) {
+			fprintf(stderr, getUVError(status).c_str());
+			return;
+		}
+
 		if (!server->data) {
 			return;
 		}
 		TCPServer *tcpsock = (TCPServer *)server->data;
 		int clientid = tcpsock->GetAvailaClientID();
-		packdata* cdata = new packdata(clientid, tcpsock->_protocol);//uv_close回调函数中释放
-		cdata->tcp_server = tcpsock;//保存服务器的信息
-		int iret = uv_tcp_init(tcpsock->loop_, cdata->client_handle);//析构函数释放
+		ClientPack* client = new ClientPack(clientid, tcpsock->_protocol);// release in uv_close
+		client->tcp_server = tcpsock;//保存服务器的信息
+		int iret = uv_tcp_init(tcpsock->loop_, client->client_tcp_handle);//析构函数释放
 		if (iret) {
-			delete cdata;
-			tcpsock->errmsg_ = getUVError(iret);
-			printf(tcpsock->errmsg_.c_str());
+			delete client;
+			printf(getUVError(iret).c_str());
 			return;
 		}
-		iret = uv_accept((uv_stream_t*)&tcpsock->server_, (uv_stream_t*)cdata->client_handle);
+		iret = uv_accept(server, (uv_stream_t*)client->client_tcp_handle);
 		if (iret) {
-			tcpsock->errmsg_ = getUVError(iret);
-			uv_close((uv_handle_t*)cdata->client_handle, NULL);
-			delete cdata;
-			printf(tcpsock->errmsg_.c_str());
+			uv_close((uv_handle_t*)client->client_tcp_handle, NULL);
+			delete client;
+			printf(getUVError(iret).c_str());
 			return;
 		}
-		tcpsock->clients_list_.insert(std::make_pair(clientid, cdata));//加入到链接队列
-		if (tcpsock->mNewConnCBFun) {
-			tcpsock->mNewConnCBFun(clientid);
-		}
-		std::cout << "new client(" << cdata->client_handle << ") id=" << clientid << std::endl;
-		sockaddr addr;
-		int len = sizeof(addr);
-		uv_tcp_getpeername(cdata->client_handle, &addr, &len);
-		PrintAddress(&addr);
-		iret = uv_read_start((uv_stream_t*)cdata->client_handle, onAllocBuffer, AfterServerRecv);//服务器开始接收客户端的数据
+		tcpsock->clients_list_.insert(std::make_pair(clientid, client));//加入到链接队列
+		std::cout << "new client(" << client->client_tcp_handle << ") id=" << clientid << std::endl;
+		client->recordAddress();
+		tcpsock->OnNewConnection(clientid);
+
+		iret = uv_read_start((uv_stream_t*)client->client_tcp_handle, onAllocBuffer, AfterServerRecv);//服务器开始接收客户端的数据
 		return;
-	}
-
-	//服务器-接收数据回调函数
-	void TCPServer::setrecvcb(int clientid, server_recvcb cb)
-	{
-
 	}
 
 	int TCPServer::SendPack(const char * buf, int length)
@@ -382,19 +408,13 @@ namespace uv
 		return 0;
 	}
 
-	//服务器-新链接回调函数
-	void TCPServer::setnewconnectcb(newconnect cb)
-	{
-		mNewConnCBFun = cb;
-	}
-
 	//服务器分析空间函数
 	void TCPServer::onAllocBuffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 	{
 		if (!handle->data) {
 			return;
 		}
-		packdata *client = (packdata*)handle->data;
+		ClientPack *client = (ClientPack*)handle->data;
 		*buf = client->readbuffer;
 	}
 
@@ -403,7 +423,7 @@ namespace uv
 		if (!handle->data) {
 			return;
 		}
-		packdata *client = (packdata*)handle->data;//服务器的recv带的是packdata
+		ClientPack *client = (ClientPack*)handle->data;//服务器的recv带的是ClientPack
 		TCPServer *server = (TCPServer *)client->tcp_server;
 		if (nread < 0) {/* Error or EOF */
 			if (nread == UV_EOF) {
@@ -445,7 +465,7 @@ namespace uv
 
 	void TCPServer::AfterClientClose(uv_handle_t *handle)
 	{
-		packdata *cdata = (packdata*)handle->data;
+		ClientPack *cdata = (ClientPack*)handle->data;
 		std::cout << "client " << cdata->client_id << " had closed." << std::endl;
 		delete cdata;
 	}
@@ -467,10 +487,10 @@ namespace uv
 			uv_mutex_unlock(&mutex_handle_);
 			return false;
 		}
-		if (uv_is_active((uv_handle_t*)itfind->second->client_handle)) {
-			uv_read_stop((uv_stream_t*)itfind->second->client_handle);
+		if (uv_is_active((uv_handle_t*)itfind->second->client_tcp_handle)) {
+			uv_read_stop((uv_stream_t*)itfind->second->client_tcp_handle);
 		}
-		uv_close((uv_handle_t*)itfind->second->client_handle, AfterClientClose);
+		uv_close((uv_handle_t*)itfind->second->client_tcp_handle, AfterClientClose);
 
 		clients_list_.erase(itfind);
 		std::cout << "从队列中删除客户端" << clientid << std::endl;

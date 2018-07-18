@@ -27,16 +27,7 @@ void MyServer::messageReceived(int cliendid, const char * buf, int bufsize)
 MyProtocol myProtocol(1001);
 MyServer server(&myProtocol);
 
-void clientDataRecv(int clientid, const char* buf, int bufsize) {
-	printf("receive %d data from client %d : %s\n", bufsize, clientid, buf);
-}
-
-void newClientConnectCB(int clientid) {
-	server.setrecvcb(clientid, clientDataRecv);
-}
-
 int main(int argc, char** argv)
 {
-	server.setnewconnectcb(newClientConnectCB);
 	server.Start("0.0.0.0", 9090);
 }

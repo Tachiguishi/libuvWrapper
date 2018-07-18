@@ -36,18 +36,17 @@ namespace uv
 		virtual void messageReceived(int cliendid, const char* buf, int bufsize) = 0;
 	};
 
-	class TCPServer;
-	class packdata
+	class ClientPack
 	{
 	public:
-		packdata(int clientid, Protocol* pro) :client_id(clientid), protocol(pro){
-			client_handle = (uv_tcp_t*)malloc(sizeof(*client_handle));
-			client_handle->data = this;
+		ClientPack(int clientid, Protocol* pro) :client_id(clientid), protocol(pro){
+			client_tcp_handle = (uv_tcp_t*)malloc(sizeof(*client_tcp_handle));
+			client_tcp_handle->data = this;
 			readbuffer = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
 			writebuffer = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
 			readStream.clear();
 		}
-		virtual ~packdata() {
+		virtual ~ClientPack() {
 			free(readbuffer.base);
 			readbuffer.base = nullptr;
 			readbuffer.len = 0;
@@ -56,18 +55,21 @@ namespace uv
 			writebuffer.base = nullptr;
 			writebuffer.len = 0;
 
-			free(client_handle);
-			client_handle = nullptr;
+			free(client_tcp_handle);
+			client_tcp_handle = nullptr;
 		}
 		void rawPackParse(const uv_buf_t * buf, int bufsize, socketBase* sb);
+		void recordAddress();
 		int client_id;//客户端id,惟一
-		uv_tcp_t* client_handle;//客户端句柄
-		TCPServer* tcp_server;//服务器句柄(保存是因为某些回调函数需要到)
+		uv_tcp_t* client_tcp_handle;//客户端句柄
+		void* tcp_server;//服务器句柄(保存是因为某些回调函数需要到)
 		uv_buf_t readbuffer;//接受数据的buf
 		uv_buf_t writebuffer;//写数据的buf
 		uv_write_t write_req;
 		Protocol* protocol;
 		std::string readStream;	// 有效数据缓存
+		char ipAddress_[INET6_ADDRSTRLEN];
+		unsigned short port_; // Port to print
 	};
 
 	class TCPServer : public socketBase
@@ -90,13 +92,12 @@ namespace uv
 
 		int SendPack(const char* buf, int length);
 		int SendPack(int clientid, const char* buf, int length);
-		void setnewconnectcb(newconnect cb);
-		void setrecvcb(int clientid, server_recvcb cb);//设置接收回调函数，每个客户端各有一个
 		bool DeleteClient(int clientid);//删除链表中的客户端
 	protected:
 		int GetAvailaClientID()const;//获取可用的client id
 		int send(int clientid, const char* data, std::size_t len);
 		int push2All(const char* data, std::size_t len);
+		virtual void OnNewConnection(int clientid);
 
 		//静态回调函数
 		static void AfterServerRecv(uv_stream_t *client, ssize_t nread, const uv_buf_t* buf);
@@ -114,11 +115,10 @@ namespace uv
 		bool listen(int backlog = 1024);
 
 		uv_tcp_t server_;//服务器链接
-		std::map<int, packdata*> clients_list_;//子客户端链接
+		std::map<int, ClientPack*> clients_list_;//子客户端链接
 		uv_mutex_t mutex_handle_;//保护clients_list_
 		uv_loop_t *loop_;
 		std::string errmsg_;
-		newconnect mNewConnCBFun;	// 新连接建立回调函数
 		Protocol* _protocol;
 		char* _packBuf;
 		bool isinit_;//是否已初始化，用于close函数中判断
@@ -163,7 +163,7 @@ namespace uv
 		bool run(int status = UV_RUN_DEFAULT);
 		int  send(const char* data, std::size_t len);
 	public:
-		packdata packdata_;
+		ClientPack packdata_;
 	private:
 		enum {
 			CONNECT_TIMEOUT,
