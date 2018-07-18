@@ -507,25 +507,17 @@ namespace uv
 		, connectstatus_(CONNECT_DIS)
 		, isinit_(false),
 		protocol_(protocol),
-		packdata_(0, protocol)
+		client_pack_(0, protocol)
 	{
-		readbuffer_ = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
-		writebuffer_ = uv_buf_init((char*)malloc(BUFFERSIZE), BUFFERSIZE);
 		loop_ = loop;
 		connect_req_.data = this;
-		write_req_.data = this;
+		client_pack_.client_tcp_handle = &client_;
 		_packBuf = (char*)malloc(BUFFERSIZE);
 	}
 
 
 	TCPClient::~TCPClient()
 	{
-		free(readbuffer_.base);
-		readbuffer_.base = nullptr;
-		readbuffer_.len = 0;
-		free(writebuffer_.base);
-		writebuffer_.base = nullptr;
-		writebuffer_.len = 0;
 		close();
 		std::cout << "客户端(" << this << ")退出";
 		if (_packBuf != nullptr) {
@@ -541,20 +533,17 @@ namespace uv
 		}
 
 		if (!loop_) {
-			errmsg_ = "loop is null on tcp init.";
-			printf(errmsg_.c_str());
+			fprintf(stderr, "loop is null on tcp init.");
 			return false;
 		}
 		int iret = uv_tcp_init(loop_, &client_);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		iret = uv_mutex_init(&write_mutex_handle_);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		isinit_ = true;
@@ -562,8 +551,7 @@ namespace uv
 		client_.data = this;
 		iret = uv_tcp_keepalive(&client_, 1, 60);
 		if (iret) {
-		    errmsg_ = getUVError(iret);
-			std::cout << errmsg_ << std::endl;
+			printf(getUVError(iret).c_str());
 		    return false;
 		}
 		std::cout << "客户端(" << this << ")Init" << std::endl;
@@ -586,8 +574,7 @@ namespace uv
 		std::cout << "客户端(" << this << ")run";
 		int iret = uv_run(loop_, (uv_run_mode)status);
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		return true;
@@ -624,11 +611,10 @@ namespace uv
 		init();
 		connectip_ = ip;
 		connectport_ = port;
-		std::cout << "客户端(" << this << ")start connect to server(" << ip << ":" << port << ")";
+		std::cout << "客户端(" << this << ")start connect to server(" << ip << ":" << port << ")" << std::endl;
 		int iret = uv_thread_create(&connect_threadhanlde_, ConnectThread, this);//触发AfterConnect才算真正连接成功，所以用线程
 		if (iret) {
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		while (connectstatus_ == CONNECT_DIS) {
@@ -672,16 +658,14 @@ namespace uv
 		struct sockaddr_in bind_addr;
 		int iret = uv_ip4_addr(pclient->connectip_.c_str(), pclient->connectport_, &bind_addr);
 		if (iret) {
-			pclient->errmsg_ = getUVError(iret);
-			printf(pclient->errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return;
 		}
 		while (true)
 		{
 			iret = uv_tcp_connect(&pclient->connect_req_, &pclient->client_, (const sockaddr*)&bind_addr, AfterConnect);
 			if (iret) {
-				pclient->errmsg_ = getUVError(iret);
-				printf("%s\n", pclient->errmsg_.c_str());
+				fprintf(stderr, getUVError(iret).c_str());
 				Sleep(500);
 
 				if (!pclient->isinit_)
@@ -691,8 +675,7 @@ namespace uv
 
 				iret = uv_tcp_init(pclient->loop_, &pclient->client_);
 				if (iret) {
-					pclient->errmsg_ = getUVError(iret);
-					printf(pclient->errmsg_.c_str());
+					fprintf(stderr, getUVError(iret).c_str());
 					return;
 				}
 				continue;
@@ -735,7 +718,7 @@ namespace uv
 			fprintf(stdout, "connect error:%s\n", getUVError(status).c_str());
 			return;
 		}
-
+		pclient->client_pack_.recordAddress();
 		int iret = uv_read_start(handle->handle, onAllocBuffer, AfterClientRecv);//客户端开始接收服务器的数据
 		if (iret) {
 			fprintf(stdout, "uv_read_start error:%s\n", getUVError(iret).c_str());
@@ -765,18 +748,13 @@ namespace uv
 		}
 
 		uv_mutex_lock(&write_mutex_handle_);
-		if (writebuffer_.len < len) {
-			writebuffer_.base = (char*)realloc(writebuffer_.base, len);
-			writebuffer_.len = len;
-		}
-		memcpy(writebuffer_.base, data, len);
-		uv_buf_t buf = uv_buf_init((char*)writebuffer_.base, len);
+		memcpy(client_pack_.writebuffer.base, data, len);
+		uv_buf_t buf = uv_buf_init((char*)client_pack_.writebuffer.base, len);
 		uv_write_t *write_req = (uv_write_t*)malloc(sizeof(uv_write_t));
 		int iret = uv_write(write_req, (uv_stream_t*)&client_, &buf, 1, AfterSend);
 		if (iret) {
 			uv_mutex_unlock(&write_mutex_handle_);
-			errmsg_ = getUVError(iret);
-			printf(errmsg_.c_str());
+			printf(getUVError(iret).c_str());
 			return false;
 		}
 		return true;
@@ -789,7 +767,7 @@ namespace uv
 			return;
 		}
 		TCPClient *client = (TCPClient*)handle->data;
-		*buf = client->readbuffer_;
+		*buf = client->client_pack_.readbuffer;
 	}
 
 
@@ -816,7 +794,7 @@ namespace uv
 			return;
 		}
 		if (nread > 0) {
-			client->packdata_.rawPackParse(buf, nread, client);
+			client->client_pack_.rawPackParse(buf, nread, client);
 		}
 	}
 

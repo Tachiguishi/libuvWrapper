@@ -18,9 +18,6 @@
 
 namespace uv
 {
-	typedef void(*newconnect)(int clientid);
-	typedef void(*server_recvcb)(int cliendid, const char* buf, int bufsize);
-
 	std::string getUVError(int retcode);
 
 	class Protocol
@@ -167,8 +164,8 @@ namespace uv
 		bool init();
 		bool run(int status = UV_RUN_DEFAULT);
 		int  send(const char* data, std::size_t len);
-	public:
-		ClientPack packdata_;
+	protected:
+		ClientPack client_pack_;
 	private:
 		enum {
 			CONNECT_TIMEOUT,
@@ -178,12 +175,9 @@ namespace uv
 		};
 		uv_tcp_t client_;//客户端连接
 		uv_loop_t *loop_;
-		uv_write_t write_req_;//写时请求
 		uv_connect_t connect_req_;//连接时请求
 		uv_thread_t connect_threadhanlde_;//线程句柄
 		std::string errmsg_;//错误信息
-		uv_buf_t readbuffer_;//接受数据的buf
-		uv_buf_t writebuffer_;//写数据的buf
 		uv_mutex_t write_mutex_handle_;//保护write,保存前一write完成才进行下一write
 
 		int connectstatus_;//连接状态
